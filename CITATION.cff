@@ -1,0 +1,49 @@
+cff-version: 1.2.0
+message: "If you use SOSNOSDP, please cite it as below, together with the works it builds on (see the README and the manual)."
+title: "SOSNOSDP: matrix sum-of-squares programs in SOSTOOLS, solved without semidefinite programming"
+version: 0.1.0
+date-released: 2026-10-21
+license: MIT
+authors:
+  - name: "<AUTHOR NAME>"
+repository-code: "https://github.com/<OWNER>/sosnosdp"
+references:
+  - type: article
+    title: "Sum-of-squares optimization without semidefinite programming"
+    authors:
+      - family-names: Papp
+        given-names: Dávid
+      - family-names: Yıldız
+        given-names: Sercan
+    journal: "SIAM Journal on Optimization"
+    volume: 29
+    issue: 1
+    start: 822
+    end: 851
+    year: 2019
+  - type: article
+    title: "Sum of squares generalizations for conic sets"
+    authors:
+      - family-names: Kapelevich
+        given-names: Lea
+      - family-names: Coey
+        given-names: Chris
+      - family-names: Vielma
+        given-names: Juan Pablo
+    journal: "Mathematical Programming"
+    doi: "10.1007/s10107-022-01831-6"
+  - type: article
+    title: "Solving natural conic formulations with Hypatia.jl"
+    authors:
+      - family-names: Coey
+        given-names: Chris
+      - family-names: Kapelevich
+        given-names: Lea
+      - family-names: Vielma
+        given-names: Juan Pablo
+    journal: "INFORMS Journal on Computing"
+    volume: 34
+    issue: 5
+    start: 2686
+    end: 2699
+    year: 2022

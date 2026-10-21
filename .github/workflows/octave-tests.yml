@@ -1,0 +1,25 @@
+name: tests (GNU Octave)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  octave:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Octave
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends octave
+
+      - name: Get SOSTOOLS and apply the Octave compatibility edits
+        run: |
+          git clone --depth 1 https://github.com/oxfordcontrol/SOSTOOLS.git "$RUNNER_TEMP/SOSTOOLS"
+          python3 octave/patch_sostools.py "$RUNNER_TEMP/SOSTOOLS"
+
+      - name: Run the test suite
+        run: |
+          octave-cli --no-gui -q --eval "SOSTOOLS_DIR='$RUNNER_TEMP/SOSTOOLS'; run('octave/run_tests_octave.m')"

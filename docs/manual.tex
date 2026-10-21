@@ -1,0 +1,320 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[expansion=false]{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+\usepackage[capitalise,noabbrev]{cleveref}
+
+\definecolor{codebg}{RGB}{246,246,246}
+\definecolor{codecomment}{RGB}{0,110,0}
+\lstset{language=Matlab, basicstyle=\ttfamily\small, backgroundcolor=\color{codebg},
+  commentstyle=\color{codecomment}, keywordstyle=\color{blue!60!black}\bfseries,
+  stringstyle=\color{purple!70!black}, frame=single, rulecolor=\color{gray!40},
+  columns=fullflexible, keepspaces=true, showstringspaces=false, breaklines=true,
+  xleftmargin=2pt, xrightmargin=2pt, aboveskip=6pt, belowskip=6pt}
+
+\newcommand{\Sym}{\mathbb{S}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\tr}{\operatorname{tr}}
+\newcommand{\svec}{\operatorname{svec}}
+\newcommand{\cA}{\mathcal{A}}
+\newcommand{\cK}{\mathcal{K}}
+\newcommand{\code}[1]{\texttt{#1}}
+\setlength{\parskip}{3pt}
+\emergencystretch=2em
+
+\title{\textbf{SOSNOSDP}\\[4pt]\large Matrix sum-of-squares programs in SOSTOOLS,\\ solved without semidefinite programming\\[8pt]\normalsize User manual, version 0.1.0}
+\author{Corentin Briat\footnote{www.briat.info; corentin@briat.info}}
+\date{October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent SOSNOSDP is a MATLAB package (also running in GNU Octave) that solves sum-of-squares (SOS) programs written with SOSTOOLS without any semidefinite programming (SDP) solver. Constraint polynomials, scalar or matrix-valued, are represented by their values at interpolation nodes, and the program is solved by a non-symmetric interior-point method that only evaluates the barrier of the dual cone. This is the approach of Papp and Y{\i}ld{\i}z~\cite{PappYildiz2019}, in its matrix-valued form due to Kapelevich, Coey and Vielma~\cite{KCV2023} and implemented in the Julia solver Hypatia~\cite{CKV2022}. SOSNOSDP re-implements the matrix weighted SOS cone and the interior-point method in MATLAB, connects them to SOSTOOLS~\cite{SOSTOOLS}, adds interval constraints that need no multipliers, and certifies every returned solution. This manual explains how the package works and how to use it.
+\end{abstract}
+
+\tableofcontents
+
+%======================================================================
+\section{Introduction}\label{sec:intro}
+%======================================================================
+SOSTOOLS~\cite{SOSTOOLS} converts an SOS program into an SDP by writing every SOS polynomial with a positive semidefinite Gram matrix, and passes the SDP to a solver such as SeDuMi~\cite{Sturm1999}. The Gram matrices of a polynomial of degree $2d$ in one variable have about $d^2/2$ entries, while the polynomial has only $2d+1$ coefficients, and for an $m\times m$ matrix polynomial the Gram matrix has side $m(d+1)$. The lifting therefore dominates time and memory at high degree.
+
+Papp and Y{\i}ld{\i}z~\cite{PappYildiz2019} showed that the lifting can be avoided entirely. A polynomial is stored by its values at unisolvent interpolation nodes, the SOS cone appears as the dual slack of a conic program, and the homogeneous interior-point method of Skajaa and Ye~\cite{SkajaaYe2015,PappYildiz2017} needs a barrier only for the dual of the SOS cone. That barrier, $-\log\det\Lambda(x)$, has cheap closed-form derivatives in the interpolant basis. Their MATLAB solver alfonso~\cite{alfonso} implements the scalar case. The extension to SOS matrices, using the SOS cones in general algebras of Papp and Alizadeh~\cite{PappAlizadeh2013}, is due to Kapelevich, Coey and Vielma~\cite{KCV2023}, and is implemented in Hypatia~\cite{CKV2022,CKV2023}.
+
+SOSNOSDP brings this approach to SOSTOOLS users. Its contributions are practical:
+\begin{itemize}[itemsep=1pt]
+\item a MATLAB implementation of the matrix weighted SOS cone of~\cite{KCV2023} and of the homogeneous interior-point method;
+\item \code{sossolve\_nosdp}, a replacement for \code{sossolve} that reads a SOSTOOLS program and solves it without SDP, after which \code{sosgetsol} works unchanged;
+\item native interval constraints for scalar and matrix polynomials, without multipliers, and a helper for normalized time variables;
+\item certificates for the coefficients actually returned, with explicit checks against rounding errors.
+\end{itemize}
+The theory of the cone, its barrier and the recovery of SOS decompositions is that of~\cite{PappYildiz2019,KCV2023}. Please cite those works together with this package (\cref{sec:cite}).
+
+%======================================================================
+\section{Installation}\label{sec:install}
+%======================================================================
+\paragraph{Requirements.} MATLAB R2016b or later, or GNU Octave 8, and SOSTOOLS~4 (tested with the version on GitHub, \url{https://github.com/oxfordcontrol/SOSTOOLS}, October 2026). Programs must be written in SOSTOOLS' default polynomial mode (\code{pvar}). No SDP solver is needed.
+
+\paragraph{MATLAB.}\ \\
+
+\begin{lstlisting}
+addpath(genpath('/path/to/SOSTOOLS'));
+addpath('/path/to/sosnosdp');
+setup_nosdp
+\end{lstlisting}
+\code{setup\_nosdp} adds the folders \code{core}, \code{bridge} and \code{examples} to the path. SOSTOOLS refuses to build a program unless an SDP solver is on the path. If none is installed, \code{setup\_nosdp} adds a placeholder \code{sedumi.m} that only raises an error when called. It is not added when a real solver is present.
+
+\paragraph{GNU Octave.} SOSTOOLS~4 relies on three MATLAB behaviours that Octave lacks (sparse logical indexing and broadcasting of sparse arrays). The script \code{octave/patch\_sostools.py} applies three one-line edits to a copy of SOSTOOLS, which change nothing under MATLAB:
+\begin{lstlisting}[language=bash]
+git clone https://github.com/oxfordcontrol/SOSTOOLS.git
+python3 sosnosdp/octave/patch_sostools.py SOSTOOLS
+octave-cli --eval "SOSTOOLS_DIR='SOSTOOLS'; run('sosnosdp/octave/run_tests_octave.m')"
+\end{lstlisting}
+Two limitations of SOSTOOLS remain in Octave: products of a polynomial by a \code{dpvar} fail (write the \code{dpvar} first, for example \code{s*(x*(2-x))}), and the default form of \code{sosmatrixineq} fails. See \code{octave/README\_OCTAVE.md}.
+
+%======================================================================
+\section{Quick start}\label{sec:quick}
+%======================================================================
+Largest $a$ such that $M(x)=\begin{bmatrix}1+x^2&ax\\ax&2+x^2\end{bmatrix}$ is positive semidefinite for all $x$. The exact answer is $1+\sqrt2$.
+\begin{lstlisting}
+pvar x a
+
+M = [1 + x^2, a*x;
+     a*x,     2 + x^2];
+
+prog = sosprogram(x, a);
+prog = sosmatrixineq(prog, M);      % matrix SOS constraint
+prog = sossetobj(prog, -a);         % maximize a
+
+[prog, info] = sossolve_nosdp(prog);
+
+double(sosgetsol(prog, a))          % 2.41421343
+info.status                         % 'optimal'
+\end{lstlisting}
+The only change with respect to a SOSTOOLS script is the call to \code{sossolve\_nosdp}.
+
+%======================================================================
+\section{How it works}\label{sec:how}
+%======================================================================
+\subsection{SOS programs and the semidefinite route}
+A symmetric $r\times r$ matrix polynomial $P$ of degree $2d$ is a sum of squares if $P=\sum_lQ_l^\top Q_l$ for polynomial matrices $Q_l$. With a basis $b$ of the polynomials of degree at most $d$ this holds if and only if $P(x)=(b(x)\otimes I_r)^\top S\,(b(x)\otimes I_r)$ for some $S\succeq0$~\cite{Nesterov2000,ShererHol2006}. Weighted SOS (WSOS) polynomials $\sum_jg_j\sigma_j$, with $\sigma_j$ SOS and weights $g_j\ge0$ on a set $D$, certify positivity on $D$~\cite{ShererHol2006}. An SOS program asks for decision variables $z$ such that affine polynomial expressions in $z$ are (W)SOS. SOSTOOLS introduces one Gram matrix $S$ per constraint and solves the resulting SDP.
+
+\subsection{Interpolant representation and the matrix WSOS cone}
+Following~\cite{LofbergParrilo2004,PappYildiz2019}, a polynomial of degree at most $2d$ is stored by its values at $N$ nodes $\xi_1,\dots,\xi_N$ that are unisolvent, meaning that only the zero polynomial vanishes at all of them. For an $r\times r$ matrix polynomial this is the vector $(\svec P(\xi_1),\dots,\svec P(\xi_N))$, where $\svec$ stacks the upper triangle with off-diagonal entries scaled by $\sqrt2$.
+
+Let $\tilde p_{ji}=\sqrt{g_j(\xi_i)}\,b_j(\xi_i)$ be the weighted basis vectors at the nodes. The matrix WSOS cone and its dual are~\cite{KCV2023,PappAlizadeh2013}
+\begin{gather*}
+K=\Big\{\big(\textstyle\sum_j(\tilde p_{ji}\otimes I)^\top\Phi_j(\tilde p_{ji}\otimes I)\big)_{i=1}^N:\ \Phi_j\succeq0\Big\},\\
+K^\ast=\Big\{W:\ \Lambda_j(W)=\textstyle\sum_i\tilde p_{ji}\tilde p_{ji}^\top\otimes W_i\succeq0\ \ \forall j\Big\}.
+\end{gather*}
+Membership in $K^\ast$ is a Cholesky test, and $F(W)=-\sum_j\log\det\Lambda_j(W)$ is a logarithmically homogeneous self-concordant barrier for $K^\ast$ with parameter $r\sum_jL_j$, where $L_j$ is the length of $b_j$. With $M^{(j)}_{ik}=(\tilde p_{ji}\otimes I)^\top\Lambda_j(W)^{-1}(\tilde p_{jk}\otimes I)$,
+\[
+\nabla F(W)_i=-\sum_jM^{(j)}_{ii},\qquad \nabla^2F(W)[H,H']=\sum_j\sum_{i,k}\tr\big(M^{(j)}_{ki}H_iM^{(j)}_{ik}H'_k\big).
+\]
+For $r=1$ these are the formulas of~\cite{PappYildiz2019}, and for general $r$ those of~\cite[Sec.~5.1]{KCV2023}. The PSD cone is the special case $N=1$, $\tilde p=1$. These formulas are implemented in \code{core/nsd\_cone\_eval.m}. The bases $\tilde P_j$ are orthonormalized, as recommended in~\cite[Sec.~4.1]{PappYildiz2019}.
+
+\subsection{The interior-point method}
+After the translation of \cref{sec:bridge}, every program has the form
+\[
+\max_z\ b^\top z\quad\text{s.t.}\quad c+Lz\in\cK=K_1\times\dots\times K_p ,
+\]
+which is the dual of $\min c^\top x$ s.t.\ $-L^\top x=b$, $x\in\cK^\ast$. The homogeneous self-dual embedding of this pair is solved by the predictor-corrector method of Skajaa and Ye~\cite{SkajaaYe2015}, as in~\cite{PappYildiz2019,PappYildiz2017}. It only needs the barrier $F$ of $\cK^\ast$, and the SOS cone $\cK$ appears only through the dual slack. The Newton systems are solved through a Schur complement of size equal to the number of decision variables (\code{core/nsd\_ipm.m}). The implementation uses practical neighbourhood parameters (predictor to the boundary of a neighbourhood of size 0.7, up to six correctors back to 0.3) rather than the theoretical ones of~\cite{PappYildiz2017}, so the worst-case iteration bound is not claimed. Correctness rests on the certificates of \cref{sec:cert}.
+
+\subsection{Certificates}\label{sec:cert}
+The method approaches $\cK$ from outside, through the dual iterates, and $\cK$ has no direct membership test. Every returned solution is therefore certified (\code{core/nsd\_certify\_point.m}, \code{core/nsd\_check\_values.m}).
+\begin{enumerate}[itemsep=2pt]
+\item \emph{Projection.} At an iterate with $\delta=\mu/\tau$, the decision variables are re-solved as $z^\star=\arg\min_z\|c+Lz+\delta\nabla F(x)\|_{\nabla^2F(x)^{-1}}$, so that $S=c+Lz^\star$ lies as close as possible to the central point $\hat s=-\delta\nabla F(x)$.
+\item \emph{Dikin test.} If $r=\|S-\hat s\|_{\nabla^2F(x)^{-1}}/\delta<1$, then $S$ lies in the Dikin ellipsoid of the conjugate barrier at $\hat s$, hence in the interior of $\cK$. Moreover $S-(1-r)\hat s\in\cK$ and $\hat s-\delta\lambda_{\max}(\Lambda(x))^{-1}E\in\cK$ for the fixed interior element $E=\cA(I)$, which gives a scale-free depth $(1-r)\,\delta\,\|E\|/(\lambda_{\max}\|S\|)$. Because the inverse Hessian is ill-conditioned near the boundary, the test is accepted only if this depth is at least \code{depth\_tol} (default $10^{-8}$).
+\item \emph{Gram test.} Otherwise the explicit Gram matrices $\Phi_j=\Lambda_j(x)^{-1}\Lambda_j(w)\Lambda_j(x)^{-1}$, $w=\nabla^2F(x)^{-1}S$, are formed. This is the recovery of~\cite[Thm.~5.1]{PappYildiz2019} in matrix form. They must be positive definite with $\lambda_{\min}>10^{-12}\lambda_{\max}$ and reproduce $S$ with relative residual below $10^{-10}$. This check does not depend on the accuracy of the Hessian. The Gram matrices are used only here, never in the solve.
+\item \emph{Returned coefficients.} The certificate is evaluated for the values $c+Lz$ of the coefficients actually returned to \code{sosgetsol}, not only for internal quantities.
+\end{enumerate}
+For infeasible programs the method returns $x\in\cK^\ast$ with $c^\top x<0$. Then no $z$ with $\|z\|<|c^\top x|/\|L^\top x\|$ is feasible (\code{info.farkas\_radius}). This is a global proof of infeasibility only when the radius is large compared with the expected size of solutions.
+
+\subsection{From a SOSTOOLS program to cones}\label{sec:bridge}
+SOSTOOLS stores every constraint as polynomial coefficients that are affine in the decision vector $u$, namely $b-A^\top u$ over a list of monomials (fields \code{prog.expr.At}, \code{b}, \code{Z}). The Gram matrices are created only inside \code{sossolve}. \code{sossolve\_nosdp} reads the program at that point (\code{bridge/sossolve\_nosdp.m}):
+\begin{enumerate}[itemsep=2pt]
+\item \emph{Decision variables.} Free variables (\code{sosdecvar}, \code{sospolyvar}, \code{sospolymatrixvar}) are kept. Gram blocks that SOSTOOLS creates for \code{sossosvar}, \code{sossosmatrixvar} and \code{sosposmatr} are parametrized by their symmetric part and constrained to the PSD cone of the same method. \code{sossosvar\_nosdp} avoids these Gram blocks altogether.
+\item \emph{Global SOS constraints} (\code{sosineq}, \code{sosmatrixineq}). The monomials of the Gram basis are taken from the Newton box of the polynomial. Nodes unisolvent for their products are approximate Fekete points, selected by column-pivoted QR from Chebyshev points (one variable) or Halton points (several variables)~\cite{SommarivaVianello2009,PappYildiz2019}. Monomials that cannot occur in an SOS polynomial become equality constraints. The default form of \code{sosmatrixineq}, $y^\top M(x)y$ with auxiliary variables $y$, is converted back to the matrix $M(x)$, so that the matrix cone of~\cite{KCV2023} is used rather than a scalar cone in $(x,y)$.
+\item \emph{Interval constraints.} For \code{sosineq\_interval} and \code{sosmatrixineq\_interval} on $[a,b]$ the cone has weights $1$ and $(t-a)(b-t)$, Chebyshev--Lobatto nodes and orthonormalized Chebyshev bases. Half-line constraints of SOSTOOLS (\code{sosineq(prog,p,[a inf])}) use weights $1$ and $t-a$. No multiplier is introduced.
+\item \emph{Equalities} (\code{soseq}) are eliminated through a null-space basis.
+\item \emph{Reparametrization.} The constraint matrix is factored as $L\Pi=QR$ with column pivoting, and the solver works with the orthonormal coordinates $Q$. The problem depends only on the range of $L$, so this is exact. It makes the method independent of the user's basis and scaling, and removes redundant variables. Numerically dependent directions are reported (\code{info.near\_dependent}).
+\item \emph{Write-back.} The SOSTOOLS decision vector is reconstructed and stored in the field \code{prog.solinfo.RRx}, which is what \code{sosgetsol} reads.
+\end{enumerate}
+
+\subsection{Size compared with the SDP}
+For an $r\times r$ constraint of degree $2d$ in one variable with an interval weight, the interpolant cone has dimension $(2d+1)r(r+1)/2$ and barrier parameter $r(2d+1)$. The corresponding SDP has the same barrier parameter and as many equality constraints as the cone has entries, but in addition Gram unknowns of order $r^2d^2$. One iteration costs $O(r^6d^3)$ operations here, against $O(r^6d^6)$ for a general SDP interior-point method~\cite{PappYildiz2019,KCV2023}.
+
+%======================================================================
+\section{Reference}\label{sec:ref}
+%======================================================================
+\subsection{Functions}
+\begin{description}[style=nextline,itemsep=3pt]
+\item[\code{[prog, info] = sossolve\_nosdp(prog, opts)}] Solves a SOSTOOLS program without SDP. Options and outputs are listed below.
+\item[\code{prog = sosineq\_interval(prog, p, t, [a b])}] $p(t)\ge0$ for $t\in[a,b]$. $p$ may depend on decision variables and on the program variable $t$ only.
+\item[\code{prog = sosmatrixineq\_interval(prog, M, t, [a b])}] $M(t)\succeq0$ for $t\in[a,b]$, $M$ square and symmetric.
+\item[\code{[prog, s] = sossosvar\_nosdp(prog, Z)}] SOS decision polynomial in the monomial basis $Z$, represented by its coefficients and its own SOS cone. The program remains solvable by \code{sossolve}.
+\item[\code{[s, tm] = nsd\_timevar('s', [a b])}] Normalized variable $s\in[-1,1]$ for a physical interval, with \code{tm.ddt(Y)} ($dY/dt$), \code{tm.at(Y, t0)} ($Y$ at time $t_0$), \code{tm.interval(I)} (an interval in $s$) and \code{tm.t(s0)}.
+\item[\code{setup\_nosdp}] Adds the package to the path.
+\item[\code{nsd\_cone}, \code{nsd\_solve}] Low-level interface: \code{K = nsd\_cone(r, Ps)} builds a cone from the weighted basis matrices, and \code{out = nsd\_solve(cones, L, c, b, opts)} solves $\max b^\top z$ s.t.\ $c+Lz\in\cK$ without SOSTOOLS.
+\end{description}
+
+\subsection{Options of \texttt{sossolve\_nosdp}}
+\begin{center}\small
+\begin{tabular}{lll}
+\toprule
+Option & Default & Meaning\\
+\midrule
+\code{certificate} & \code{'auto'} & \code{'auto'}: Dikin test, Gram check where inconclusive; \code{'dikin'}; \code{'gram'}\\
+\code{depth\_tol} & $10^{-8}$ & depth a Dikin certificate must prove\\
+\code{max\_iter}, \code{tol} & 200, $10^{-8}$ & iterations and tolerance of the interior-point method\\
+\code{box} & \code{[-1 1]} & box in which nodes of global SOS constraints are chosen\\
+\code{rank\_tol} & $10^{-14}$ & tolerance for removing dependent decision directions\\
+\code{verbose} & \code{false} & print the iterations\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Statuses and output}
+\begin{description}[itemsep=2pt]
+\item[\code{feasible}] feasibility program, certified solution.
+\item[\code{optimal}] the method converged; the returned solution is the last certified iterate, strictly feasible and slightly below the optimum (for SOS programs the optimum lies on the boundary of the cone).
+\item[\code{infeasible}] a Farkas vector was found; see \code{info.farkas\_radius}.
+\item[\code{uncertified\_*}] no certificate could be established; the last iterate is still returned so that it can be checked by other means.
+\end{description}
+Further fields of \code{info}: \code{iters}, \code{time}, \code{obj}, \code{cones} (one description per cone), \code{cert\_method} and \code{depth} (per cone), \code{dikin\_ratio}, \code{rank}, \code{near\_dependent}, \code{barrier\_parameter}, \code{accuracy} (\code{full} or \code{reduced}), \code{last\_failed\_certificate}.
+
+%======================================================================
+\section{Good practice and numerical limits}\label{sec:practice}
+%======================================================================
+\paragraph{Normalize interval variables.} SOSTOOLS stores all polynomials in monomial coefficients of the declared variable. On a wide interval high-degree monomials are numerically dependent: for a clock-dependent LMI on $[0,2]$ the numerical rank drops from 249 to 92 at degree 40 and the method stalls, whereas in a variable normalized to $[-1,1]$ it certifies degree 40 in 19 iterations. The change of basis cannot be repaired after the program is built, so declare the variable with \code{nsd\_timevar}, which still lets you write derivatives and endpoint values in physical time.
+
+\paragraph{Prefer interval constraints to multipliers.} \code{sosmatrixineq\_interval} needs neither multipliers nor Gram variables. On a clock-dependent LMI of degree 24 it took 0.8~s, whereas the same solver with a matrix SOS multiplier did not reach a certificate in 21~s.
+
+\paragraph{Ill-conditioned problems.} When every solution is badly conditioned, no floating-point certificate can be trusted, whatever the solver. For a random 10-state plant with one input and sampling period 0.1, the discrete controllability Gramian has condition number about $10^{17}$ and every valid Lyapunov matrix about $10^{7}$. The status is then \code{uncertified\_stalled}, while the returned controller still stabilizes the sampled loop (spectral radius 0.98). For control problems, an independent check of the result (closed-loop spectral radius, second moments) is always recommended.
+
+%======================================================================
+\section{Examples}\label{sec:examples}
+%======================================================================
+The examples in \code{examples/} are written one statement per line with comments, so that they can serve as templates.
+
+\subsection{Example 1: polynomial minimization}
+Global minimum of $x^4-4x^3+3x^2+2x+1$ (0.75) and minimum of $x^4-x$ on $[0,2]$, the latter imposed directly on the interval:
+\begin{lstlisting}
+prog = sosprogram(x, gam);
+prog = sosineq_interval(prog, x^4 - x - gam, x, [0 2]);
+prog = sossetobj(prog, -gam);
+[prog, info] = sossolve_nosdp(prog);
+\end{lstlisting}
+Result: $-0.4724704$ (exact $-0.4724704$), certified.
+
+\subsection{Example 2: matrix SOS}
+The quick-start problem, in both forms of \code{sosmatrixineq}. Result $2.4142134$ (exact $1+\sqrt2$).
+
+\subsection{Example 3: sampled-data stabilization by clock-dependent LMIs}
+For the plant $\dot x=Ax+Bu$ with a zero-order hold and sampling period $T$, the augmented state $(x,u)$ yields an impulsive system~\cite{Briat2013,Briat2021}. One looks for $X(t)$, $t\in[0,T]$, and $U$ with $\dot X-A_aX-XA_a^\top\succeq0$ on $[0,T]$ and a boundary LMI, and $K=UX(T)^{-1}$ stabilizes the sampled loop.
+\begin{lstlisting}
+[s, tm] = nsd_timevar('s', [0 T]);
+prog = sosprogram(s);
+
+[prog, X] = sospolymatrixvar(prog, monomials(s, 0:d), [m m], 'symmetric');
+[prog, U] = sospolymatrixvar(prog, monomials(s, 0), [nu m]);
+
+% flow condition on [0, T]
+P = tm.ddt(X) - X*Aa' - (X*Aa')';
+prog = sosmatrixineq_interval(prog, P, s, tm.interval());
+
+% jump condition
+XT = tm.at(X, T);
+X0 = tm.at(X, 0);
+Off = -(XT*J0' + U'*Ba')';
+prog = sosmatrixineq(prog, [XT, Off'; Off, X0 - epsl*eye(m)], 'Mineq');
+
+[prog, info] = sossolve_nosdp(prog);
+\end{lstlisting}
+For the unstable oscillator $A=\begin{bmatrix}0.3&3\\-3&0.3\end{bmatrix}$, $B=[0\ 1]^\top$, $T=2$: infeasible at $d=6$, feasible at $d=8$ (spectral radius 0.904) and at $d=32$ (0.539).
+
+\subsection{Example 4: largest sampling interval under aperiodic sampling}
+With a given gain $K$ and sampling intervals in $[T_{\min},T_{\max}]$, the jump condition must hold for every interval $\theta\in[T_{\min},T_{\max}]$: it is a parameter-dependent LMI, imposed with \code{sosmatrixineq\_interval(prog, Psi, s, tm.interval([Tmin Tmax]))}. The largest certified $T_{\max}$ is found by bisection. For the benchmark $A=\begin{bmatrix}0&1\\0&-0.1\end{bmatrix}$, $B=[0\ 0.1]^\top$, $K=-[3.75\ 11.5]$, $T_{\min}=0.01$ and degree 8 the result is $T_{\max}=1.7292$, against the periodic bound $1.7298$ computed on the same grid.
+
+\subsection{Example 5: stochastic sampled-data systems}
+Theorem~15 of~\cite{Briat2016} gives conditions for the mean-square stabilization of
+\[
+dx=(A_{sd}x+B_{sd}u)\,dt+E_{sd}x\,dW_1+\alpha B_{sd}u\,dW_2,\qquad u(t)=K_d\,[x(t_k);u(t_k)],
+\]
+under sampling intervals in $[T_{\min},T_{\max}]$: a $9\times9$ matrix inequality on $[0,T_{\max}]$ and a $6\times6$ one on $[T_{\min},T_{\max}]$, both imposed directly on their intervals (\code{examples/stochastic\_sd\_design.m}). For the paper's Example~16 all six ranges of its Table~6 are certified in under 0.5~s each. Each design is verified exactly through the second moment $E[xx^\top]$, whose evolution between and at samples is linear (\code{examples/second\_moment.m}). For an unstable variant, bisection gives the largest certified $T_{\max}$: 1.37 at degree 2 and 3.46 at degree 4.
+
+%======================================================================
+\section{Verification}\label{sec:verif}
+%======================================================================
+\code{tests/run\_tests.m} contains 16 tests with known answers. They cover polynomial minima, the matrix example, half-line and interval minima, multipliers through \code{sossosvar} and \code{sossosvar\_nosdp}, equality constraints, clock-dependent LMIs that are infeasible at degree 6 and feasible at degrees 8, 24, 32 and 40, Gram-free certificates, \code{nsd\_timevar}, and a regression test ensuring that a point on the boundary of the cone is not accepted as a certificate. All pass under Octave 8.4 with SOSTOOLS~4. The workflow \code{.github/workflows/octave-tests.yml} runs them on every push.
+
+With SeDuMi through SOSTOOLS' \code{sossolve} (\code{tests/compare\_sedumi.m}), the optimal values of four test problems agree to about $10^{-7}$. The values of SOSNOSDP lie slightly inside the feasible set, those of SeDuMi sometimes slightly outside. On the clock-dependent LMI of Example~3 at increasing degree (\code{tests/scaling\_sedumi.m}, time interval $[0,2]$):
+\begin{center}\small
+\begin{tabular}{rlll}
+\toprule
+degree & SeDuMi, multiplier form & SOSNOSDP, multiplier form & SOSNOSDP, native interval\\
+\midrule
+8 & feasible, 0.6 s & feasible, 0.7 s & feasible, 0.4 s\\
+16 & numerical error flag & feasible, 2.8 s & feasible, 0.5 s\\
+24 & numerical error & uncertified & feasible, 0.8 s\\
+\bottomrule
+\end{tabular}
+\end{center}
+These are single runs on one core under Octave. The package has not yet been run in MATLAB by its authors.
+
+%======================================================================
+\section{Relation to other software}\label{sec:related}
+%======================================================================
+\begin{itemize}[itemsep=2pt]
+\item \textbf{alfonso}~\cite{alfonso} (MATLAB, Papp and Y{\i}ld{\i}z): generic non-symmetric conic solver with scalar WSOS cones in the interpolant basis, and the reference implementation of~\cite{PappYildiz2019}. It accepts user-defined barrier oracles. \url{https://github.com/dpapp-github/alfonso}
+\item \textbf{Hypatia.jl}~\cite{CKV2022,CKV2023} (Julia, Coey, Kapelevich and Vielma): generic conic interior-point solver with, among many cones, the scalar and matrix interpolant WSOS cones (\code{WSOSInterpNonnegativeCone}, \code{WSOSInterpPosSemidefTriCone}) of~\cite{KCV2023}. \url{https://github.com/jump-dev/Hypatia.jl}
+\item \textbf{SumOfSquares.jl}~\cite{SumOfSquares} (Julia, Legat et al.): JuMP-based modelling of SOS programs, the Julia counterpart of SOSTOOLS. With an interpolant (Lagrange) basis, scalar SOS constraints reach Hypatia's interpolant cone without a PSD reformulation. Matrix SOS constraints are scalarized. \url{https://github.com/jump-dev/SumOfSquares.jl}
+\item \textbf{SOSTOOLS}~\cite{SOSTOOLS} (MATLAB): the modelling front end used by SOSNOSDP, which normally solves programs through SDP solvers. \url{https://github.com/oxfordcontrol/SOSTOOLS}
+\end{itemize}
+SOSNOSDP is not a port of Hypatia. Its solver is a compact MATLAB implementation of the same cone and of a Skajaa--Ye type method, and its purpose is to make the approach available to existing SOSTOOLS programs, in particular matrix-valued ones with interval constraints.
+
+%======================================================================
+\section{Limitations and future work}\label{sec:limits}
+%======================================================================
+\begin{itemize}[itemsep=2pt]
+\item Only SOSTOOLS programs written with \code{pvar} are supported, not the Symbolic Math Toolbox mode.
+\item The sparsity options of SOSTOOLS (\code{'sparse'}, \code{'sparsemultipartite'}) are handled as dense constraints.
+\item Global SOS constraints in several variables use approximate Fekete nodes and have been tested far less than univariate and interval constraints.
+\item Linear algebra is dense. The Hessian of a cone with $N$ nodes and matrix size $r$ has order $Nr(r+1)/2$.
+\item Interval constraints are univariate. Parameter boxes in several variables (robust or LPV problems) are a natural extension.
+\item The interior-point method uses practical parameters and has not been tuned. Certificates are evaluated in floating point, not in exact arithmetic.
+\end{itemize}
+
+%======================================================================
+\section{How to cite}\label{sec:cite}
+%======================================================================
+If you use SOSNOSDP, please cite the package (\code{CITATION.cff}) together with the works it builds on: Papp and Y{\i}ld{\i}z~\cite{PappYildiz2019} for SOS optimization without SDP, Kapelevich, Coey and Vielma~\cite{KCV2023} for the matrix SOS cone and its barrier, Coey, Kapelevich and Vielma~\cite{CKV2022} for Hypatia, Skajaa and Ye~\cite{SkajaaYe2015} for the interior-point method, and SOSTOOLS~\cite{SOSTOOLS}.
+
+\begin{thebibliography}{99}\small
+\bibitem{Briat2013} C.~Briat, \emph{Convex conditions for robust stability analysis and stabilization of linear aperiodic impulsive and sampled-data systems under dwell-time constraints}, Automatica, 49 (2013), pp.~3449--3457.
+\bibitem{Briat2016} C.~Briat, \emph{Stability analysis and stabilization of stochastic linear impulsive, switched and sampled-data systems under dwell-time constraints}, Automatica, 74 (2016), pp.~279--287.
+\bibitem{Briat2021} C.~Briat, \emph{Stability analysis and stabilization of LPV systems with jumps and (piecewise) differentiable parameters using continuous and sampled-data controllers}, Nonlinear Analysis: Hybrid Systems, 41 (2021), 101040.
+\bibitem{CKV2022} C.~Coey, L.~Kapelevich, and J.~P.~Vielma, \emph{Solving natural conic formulations with Hypatia.jl}, INFORMS Journal on Computing, 34 (2022), pp.~2686--2699.
+\bibitem{CKV2023} C.~Coey, L.~Kapelevich, and J.~P.~Vielma, \emph{Performance enhancements for a generic conic interior point algorithm}, arXiv:2107.04262.
+\bibitem{KCV2023} L.~Kapelevich, C.~Coey, and J.~P.~Vielma, \emph{Sum of squares generalizations for conic sets}, Mathematical Programming, \href{https://doi.org/10.1007/s10107-022-01831-6}{doi:10.1007/s10107-022-01831-6}. Preprint arXiv:2103.11499.
+\bibitem{LofbergParrilo2004} J.~L\"ofberg and P.~A.~Parrilo, \emph{From coefficients to samples: a new approach to SOS optimization}, in 43rd IEEE Conference on Decision and Control, 2004, pp.~3154--3159.
+\bibitem{Nesterov2000} Y.~Nesterov, \emph{Squared functional systems and optimization problems}, in High Performance Optimization, Kluwer, 2000, pp.~405--440.
+\bibitem{PappAlizadeh2013} D.~Papp and F.~Alizadeh, \emph{Semidefinite characterization of sum-of-squares cones in algebras}, SIAM Journal on Optimization, 23 (2013), pp.~1398--1423.
+\bibitem{PappYildiz2017} D.~Papp and S.~Y{\i}ld{\i}z, \emph{On ``A homogeneous interior-point algorithm for non-symmetric convex conic optimization''}, arXiv:1712.00492, 2017.
+\bibitem{PappYildiz2019} D.~Papp and S.~Y{\i}ld{\i}z, \emph{Sum-of-squares optimization without semidefinite programming}, SIAM Journal on Optimization, 29 (2019), pp.~822--851.
+\bibitem{alfonso} D.~Papp and S.~Y{\i}ld{\i}z, \emph{alfonso: Matlab package for nonsymmetric conic optimization}, INFORMS Journal on Computing, 34 (2022), pp.~11--19.
+\bibitem{ShererHol2006} C.~W.~Scherer and C.~W.~J.~Hol, \emph{Matrix sum-of-squares relaxations for robust semi-definite programs}, Mathematical Programming, 107 (2006), pp.~189--211.
+\bibitem{SkajaaYe2015} A.~Skajaa and Y.~Ye, \emph{A homogeneous interior-point algorithm for nonsymmetric convex conic optimization}, Mathematical Programming, 150 (2015), pp.~391--422.
+\bibitem{SommarivaVianello2009} A.~Sommariva and M.~Vianello, \emph{Computing approximate Fekete points by QR factorizations of Vandermonde matrices}, Computers \& Mathematics with Applications, 57 (2009), pp.~1324--1336.
+\bibitem{SOSTOOLS} A.~Papachristodoulou, J.~Anderson, G.~Valmorbida, S.~Prajna, P.~Seiler, P.~A.~Parrilo, M.~M.~Peet, and D.~Jagt, \emph{SOSTOOLS: Sum of squares optimization toolbox for MATLAB}, version 4.00, 2021. \url{https://github.com/oxfordcontrol/SOSTOOLS}.
+\bibitem{Sturm1999} J.~F.~Sturm, \emph{Using SeDuMi 1.02, a MATLAB toolbox for optimization over symmetric cones}, Optimization Methods and Software, 11--12 (1999), pp.~625--653.
+\bibitem{SumOfSquares} B.~Legat, C.~Coey, R.~Deits, J.~Huchette, and A.~Perry, \emph{Sum-of-squares optimization in Julia}, 2017. \url{https://github.com/jump-dev/SumOfSquares.jl}.
+\end{thebibliography}
+
+\end{document}

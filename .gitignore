@@ -1,0 +1,10 @@
+*.asv
+*.m~
+*.mat
+*.orig
+octave-workspace
+docs/*.aux
+docs/*.log
+docs/*.out
+docs/*.toc
+.DS_Store
