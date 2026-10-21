@@ -163,6 +163,70 @@ ok = ~any(strcmp(info.status, {'feasible', 'optimal'}));
 report('T12 no certificate on the boundary (eps = 0, d = 6)', ok, sprintf('status = %s', info.status));
 npass = npass + ok; nfail = nfail + ~ok;
 
+% ---- T13: global matrix SOS in two variables, max a with exact value 1 + 1/sqrt(2)
+pvar x y z a
+M = [x^2 + y^2 + 1, a*(x + y); a*(x + y), 2 + x^2 + y^2];
+prog = sosprogram([x; y], a);
+prog = sosmatrixineq(prog, M, 'Mineq');
+prog = sossetobj(prog, -a);
+[prog, info] = sossolve_nosdp(prog);
+av = double(sosgetsol(prog, a)); ex = 1 + 1/sqrt(2);
+ok = strcmp(info.status, 'optimal') && av <= ex + 1e-9 && ex - av < 1e-4;
+report('T13 matrix SOS, 2 variables (exact 1+1/sqrt(2))', ok, sprintf('a = %.8f, exact %.8f, %s', av, ex, info.cones{1}));
+npass = npass + ok; nfail = nfail + ~ok;
+
+% ---- T14: global scalar SOS in three variables, x^4+y^4+z^4+1+a xyz, max a = 4
+prog = sosprogram([x; y; z], a);
+prog = sosineq(prog, x^4 + y^4 + z^4 + 1 + a*x*y*z);
+prog = sossetobj(prog, -a);
+[prog, info] = sossolve_nosdp(prog);
+av = double(sosgetsol(prog, a));
+ok = strcmp(info.status, 'optimal') && av <= 4 + 1e-9 && 4 - av < 1e-4;
+report('T14 scalar SOS, 3 variables (exact 4)', ok, sprintf('a = %.8f, %s', av, info.cones{1}));
+npass = npass + ok; nfail = nfail + ~ok;
+
+% ---- T15: a matrix polynomial on the boundary of the SOS cone for every a (constant (2,2)
+% entry forces a singular Gram matrix); no interior certificate exists and none may be claimed.
+% max a would be 1 (the matrix is not PSD for a > 1).
+M = [x^2 + y^2 + 1, a*(x + y); a*(x + y), 2];
+prog = sosprogram([x; y], a);
+prog = sosmatrixineq(prog, M, 'Mineq');
+prog = sossetobj(prog, -a);
+[prog, info] = sossolve_nosdp(prog);
+certified = any(strcmp(info.status, {'feasible', 'optimal'}));
+av = double(sosgetsol(prog, a));
+ok = ~certified || av <= 1 + 1e-9;
+report('T15 structurally singular Gram matrix: no false certificate', ok, sprintf('status = %s, a = %.7f', info.status, av));
+npass = npass + ok; nfail = nfail + ~ok;
+
+% ---- T16: box in two variables through Gram-free multipliers: min xy on [-1,1]^2 = -1
+pvar gam
+prog = sosprogram([x; y], gam);
+Zm = monomials([x; y], 0:1);
+[prog, s1] = sossosvar_nosdp(prog, Zm);
+[prog, s2] = sossosvar_nosdp(prog, Zm);
+prog = sosineq(prog, poly2dpvar(x*y - gam, prog.decvartable) - s1*(1 - x^2) - s2*(1 - y^2));
+prog = sossetobj(prog, -gam);
+[prog, info] = sossolve_nosdp(prog);
+g = double(sosgetsol(prog, gam));
+ok = strcmp(info.status, 'optimal') && g <= -1 + 1e-9 && g > -1 - 1e-5;
+report('T16 box [-1,1]^2 via sossosvar_nosdp multipliers', ok, sprintf('gamma = %.8f (exact -1), %d cones', g, numel(info.cones)));
+npass = npass + ok; nfail = nfail + ~ok;
+
+% ---- T17: matrix inequality on a box in two variables through matrix SOS multipliers
+% [1+x^2, a x y; a x y, 1+y^2] >= 0 on [-1,1]^2 iff a <= 2
+prog = sosprogram([x; y], a);
+[prog, S1] = sossosmatrixvar(prog, Zm, [2 2]);
+[prog, S2] = sossosmatrixvar(prog, Zm, [2 2]);
+M = poly2dpvar([1 + x^2, a*x*y; a*x*y, 1 + y^2], prog.decvartable);
+prog = sosmatrixineq(prog, M - S1*(1 - x^2) - S2*(1 - y^2), 'Mineq');
+prog = sossetobj(prog, -a);
+[prog, info] = sossolve_nosdp(prog);
+av = double(sosgetsol(prog, a));
+ok = strcmp(info.status, 'optimal') && av <= 2 + 1e-9 && 2 - av < 1e-5;
+report('T17 matrix inequality on [-1,1]^2 via sossosmatrixvar', ok, sprintf('a = %.8f (exact 2), %d cones', av, numel(info.cones)));
+npass = npass + ok; nfail = nfail + ~ok;
+
 fprintf('\n%d passed, %d failed\n', npass, nfail);
 if nfail > 0
   error('sosnosdp:tests', '%d test(s) failed', nfail);

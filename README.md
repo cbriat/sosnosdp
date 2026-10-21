@@ -6,7 +6,8 @@ SOSNOSDP is a MATLAB package (also running in GNU Octave) that solves SOS progra
 [SOSTOOLS](https://github.com/oxfordcontrol/SOSTOOLS) without any SDP solver. Scalar and matrix
 polynomial constraints are represented by their values at interpolation nodes, and the program is solved
 by a non-symmetric interior-point method that only evaluates the barrier of the dual cone. No Gram
-matrices are introduced for the constraints, and every returned solution is certified.
+matrices are introduced for the constraints, and every returned solution is certified by explicit positive definite Gram matrices, checked against
+rounding errors.
 
 Replace
 
@@ -85,11 +86,24 @@ double(sosgetsol(prog, a))          % 2.4142..., the exact value is 1 + sqrt(2)
 
 ## What is supported
 
+Matrix SOS constraints are not limited to one variable. What depends on the number of variables
+is the set on which positivity is imposed:
+
+| Constraint | Variables | Treatment |
+|---|---|---|
+| `sosineq(prog, p)`, `sosmatrixineq(prog, M)` (positivity on all of R^n) | any number | interpolant matrix SOS cone, no Gram variables |
+| `sosineq_interval`, `sosmatrixineq_interval` | one | weighted cone on `[a, b]`, no multipliers, no Gram variables |
+| `sosineq(prog, p, [a inf])` | one | weighted cone on a half-line |
+| positivity on a box or semialgebraic set in several variables | any number | SOSTOOLS multipliers: `sossosvar_nosdp` (scalar, Gram-free), or `sossosvar` and `sossosmatrixvar` (Gram blocks as PSD cones) |
+
+Tested: matrix SOS in two and three variables, and scalar and matrix inequalities on a box in two
+variables, all with known answers. Several-variable problems are much less tested than univariate
+ones, and their cost grows quickly with the number of nodes.
+
+Other SOSTOOLS constructs:
+
 | SOSTOOLS construct | Treatment |
 |---|---|
-| `sosineq(prog, p)` | interpolant SOS cone |
-| `sosmatrixineq(prog, M)` (default and `'Mineq'`) | matrix SOS cone |
-| `sosineq(prog, p, [a inf])` | weighted cone on a half-line |
 | `soseq` | linear equalities, eliminated |
 | `sosdecvar`, `sospolyvar`, `sospolymatrixvar` | free decision variables |
 | `sossosvar`, `sossosmatrixvar`, `sosposmatr` | Gram blocks created by SOSTOOLS, as PSD cones of the same method |
@@ -132,7 +146,7 @@ Two pieces of advice from it:
 
 ## Tests
 
-`tests/run_tests.m` runs 16 tests with known answers. They pass under GNU Octave 8.4 with SOSTOOLS 4,
+`tests/run_tests.m` runs 21 tests with known answers. They pass under GNU Octave 8.4 with SOSTOOLS 4,
 and run automatically on every push (`.github/workflows/octave-tests.yml`). Comparisons with SeDuMi
 through `sossolve` are in `tests/compare_sedumi.m` and `tests/scaling_sedumi.m`.
 
@@ -142,13 +156,118 @@ The package has not yet been run in MATLAB by its authors. Reports are welcome.
 
 * Only SOSTOOLS programs written with `pvar`, not the Symbolic Math Toolbox mode.
 * Sparsity options of SOSTOOLS are handled as dense constraints.
+* Interval constraints are univariate; boxes in several variables need multipliers, and there is no
+  Gram-free matrix multiplier yet.
+* Constraints that lie on the boundary of the SOS cone for every value of the decision variables
+  (for example a constant diagonal entry next to quadratic ones) cannot be certified.
 * Global SOS constraints in several variables are much less tested than univariate and interval ones.
 * Dense linear algebra, and certificates evaluated in floating point.
 
 ## How to cite
 
-Please cite this package (see [CITATION.cff](CITATION.cff)) together with Papp and Yıldız (2019),
-Kapelevich, Coey and Vielma, Coey, Kapelevich and Vielma (2022), and SOSTOOLS.
+If you use SOSNOSDP in published work, please cite the package and the works it builds on: Papp and
+Yıldız for SOS optimization without SDP, Kapelevich, Coey and Vielma for the matrix SOS cone and its
+barrier, Coey, Kapelevich and Vielma for Hypatia, Skajaa and Ye for the interior-point method, and
+SOSTOOLS for the modelling front end. GitHub's "Cite this repository" button gives the package
+citation from [CITATION.cff](CITATION.cff).
+
+```bibtex
+@misc{sosnosdp,
+  author       = {Briat, Corentin},
+  title        = {{SOSNOSDP}: Matrix sum-of-squares programs in {SOSTOOLS}, solved without semidefinite programming},
+  note         = {Version 0.1.0},
+  year         = {2026},
+  howpublished = {\url{https://github.com/cbriat/sosnosdp}}
+}
+
+@article{PappYildiz2019,
+  author  = {Papp, D{\'a}vid and Y{\i}ld{\i}z, Sercan},
+  title   = {Sum-of-squares optimization without semidefinite programming},
+  journal = {SIAM Journal on Optimization},
+  volume  = {29},
+  number  = {1},
+  pages   = {822--851},
+  year    = {2019}
+}
+
+@article{KapelevichCoeyVielma2023,
+  author  = {Kapelevich, Lea and Coey, Chris and Vielma, Juan Pablo},
+  title   = {Sum of squares generalizations for conic sets},
+  journal = {Mathematical Programming},
+  pages   = {1417--1429},
+  year    = {2023},
+  doi     = {10.1007/s10107-022-01831-6}
+}
+
+@article{CoeyKapelevichVielma2022,
+  author  = {Coey, Chris and Kapelevich, Lea and Vielma, Juan Pablo},
+  title   = {Solving natural conic formulations with {Hypatia.jl}},
+  journal = {INFORMS Journal on Computing},
+  volume  = {34},
+  number  = {5},
+  pages   = {2686--2699},
+  year    = {2022}
+}
+
+@article{SkajaaYe2015,
+  author  = {Skajaa, Anders and Ye, Yinyu},
+  title   = {A homogeneous interior-point algorithm for nonsymmetric convex conic optimization},
+  journal = {Mathematical Programming},
+  volume  = {150},
+  number  = {2},
+  pages   = {391--422},
+  year    = {2015}
+}
+
+@misc{SOSTOOLS,
+  author       = {Papachristodoulou, Antonis and Anderson, James and Valmorbida, Giorgio and
+                  Prajna, Stephen and Seiler, Peter and Parrilo, Pablo A. and Peet, Matthew M. and
+                  Jagt, Declan},
+  title        = {{SOSTOOLS}: Sum of squares optimization toolbox for {MATLAB}, version 4.00},
+  year         = {2021},
+  howpublished = {\url{https://github.com/oxfordcontrol/SOSTOOLS}}
+}
+```
+
+Further references, where relevant:
+
+```bibtex
+@article{PappYildiz2022alfonso,
+  author  = {Papp, D{\'a}vid and Y{\i}ld{\i}z, Sercan},
+  title   = {alfonso: {Matlab} package for nonsymmetric conic optimization},
+  journal = {INFORMS Journal on Computing},
+  volume  = {34},
+  number  = {1},
+  pages   = {11--19},
+  year    = {2022}
+}
+
+@article{PappAlizadeh2013,
+  author  = {Papp, D{\'a}vid and Alizadeh, Farid},
+  title   = {Semidefinite characterization of sum-of-squares cones in algebras},
+  journal = {SIAM Journal on Optimization},
+  volume  = {23},
+  number  = {3},
+  pages   = {1398--1423},
+  year    = {2013}
+}
+
+@inproceedings{LofbergParrilo2004,
+  author    = {L{\"o}fberg, Johan and Parrilo, Pablo A.},
+  title     = {From coefficients to samples: a new approach to {SOS} optimization},
+  booktitle = {43rd IEEE Conference on Decision and Control},
+  pages     = {3154--3159},
+  year      = {2004}
+}
+```
+
+The control examples (3 to 5) follow C. Briat, *Convex conditions for robust stability analysis and
+stabilization of linear aperiodic impulsive and sampled-data systems under dwell-time constraints*,
+Automatica 49 (2013) 3449–3457; *Stability analysis and stabilization of stochastic linear impulsive,
+switched and sampled-data systems under dwell-time constraints*, Automatica 74 (2016) 279–287; and
+*Stability analysis and stabilization of LPV systems with jumps and (piecewise) differentiable
+parameters using continuous and sampled-data controllers*, Nonlinear Analysis: Hybrid Systems 41 (2021)
+101040. Please cite them if you use these examples.
 
 ## License
 

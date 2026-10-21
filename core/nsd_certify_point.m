@@ -6,11 +6,8 @@ function [ok, info] = nsd_certify_point(cones, offs, L, c, delta, EV, mode, dept
 %               the barrier Hessian; no Gram matrix is formed.
 %     'gram'  : explicit Gram matrices Phi_j = Lambda_j(x)^-1 Lambda_j(w) Lambda_j(x)^-1 (w = H^-1 S),
 %               accepted if all are positive definite.
-%     'auto'  : 'dikin', and 'gram' for the cones where the Dikin test is inconclusive (default).
-%   A certificate is accepted only if it proves a relative depth inside the cone of at least
-%   depth_tol (default 1e-8), so that it is not destroyed by rounding errors in the data:
-%     Dikin: S - (1 - r) s_hat lies in K (r = Dikin ratio), depth = (1 - r) ||s_hat|| / ||S||;
-%     Gram : depth = smallest relative eigenvalue of the Gram matrices.
+%     'auto'  : as 'gram' (default); the Dikin ratio is computed and reported only.
+%   Acceptance rules are in NSD_CHECK_VALUES (the Dikin test must prove depth >= depth_tol).
 if nargin < 7 || isempty(mode), mode = 'auto'; end
 if nargin < 8 || isempty(depth_tol), depth_tol = 1e-8; end
 if nargin < 9, x = []; end

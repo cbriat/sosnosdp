@@ -17,9 +17,9 @@ function [prog, info] = sossolve_nosdp(prog, opts)
 %   method; no SDP solver is called).
 %
 %   opts (all optional): max_iter, tol, verbose, box ([lo hi] for node selection, default [-1 1]),
-%     certificate ('auto' default: Dikin test, Gram matrices only where it is inconclusive;
-%                  'dikin': Gram-free only; 'gram': explicit Gram matrices), rank_tol (1e-14),
-%     depth_tol (1e-8): smallest relative depth inside the cone that a certificate must prove
+%     certificate ('auto' default and 'gram': explicit Gram matrices decide, used only for
+%                  verification; 'dikin': Gram-free, faster, less robust near the boundary),
+%     rank_tol (1e-14), depth_tol (1e-8): depth a Dikin certificate must prove
 %   info: status ('feasible','optimal','infeasible',...), obj, iters, time, cones, gram, farkas_radius
 if nargin < 2, opts = struct(); end
 if ~isempty(prog.solinfo.x), error('The SOS program is already solved.'); end

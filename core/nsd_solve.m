@@ -56,20 +56,28 @@ out.accuracy = res.accuracy;
 if ~isempty(out.z) && (~isempty(strfind(out.status, 'feasible')) || strcmp(out.status, 'optimal'))
   % The certificate was obtained for node values computed in the orthonormal coordinates.
   % Re-check it for the values c + L z of the coefficients z actually returned, at the same point.
-  cinfo = [];
-  if strcmp(res.status, 'certified'), cinfo = res.info; elseif ~isempty(res.last_cert), cinfo = res.last_cert; end
-  if ~isempty(cinfo) && isfield(cinfo, 'x') && ~isempty(cinfo.x)
-    Sz = c + L * out.z;
+  % If it fails for the newest certified iterate, fall back to earlier (deeper) ones.
+  if strcmp(res.status, 'certified'), cands = {res.info}; else, cands = res.cert_hist; end
+  okz = false;
+  for ic = numel(cands):-1:1
+    cinfo = cands{ic};
+    if ~isfield(cinfo, 'x') || isempty(cinfo.x), continue; end
+    zc = back(cinfo.z);
+    Sz = c + L * zc;
     EVc = nsd_eval_all(cones, offs, cinfo.x);
     [okz, zinfo] = nsd_check_values(cones, offs, Sz, cinfo.delta, EVc, cmode, depth_tol);
-    out.coef_consistency = norm(Sz - (c + Q * (Q' * (Sz - c))), inf) / max(1, norm(Sz, inf));
     if okz
+      out.z = zc; out.gram = cinfo.gram;
+      if isfield(cinfo, 'iter'), out.cert_iter = cinfo.iter; end
       out.cert_method = zinfo.method; out.dikin_ratio = zinfo.dikin_ratio; out.depth = zinfo.depth;
       if ~isempty(zinfo.gram) && any(~cellfun(@isempty, zinfo.gram)), out.gram = zinfo.gram; end
-    else
-      out.status = 'uncertified_coefficients';
-      out.cert_failure = 'the certificate does not survive the conversion to the returned coefficients';
+      out.coef_consistency = norm(Sz - (c + Q * (Q' * (Sz - c))), inf) / max(1, norm(Sz, inf));
+      break
     end
+  end
+  if ~okz
+    out.status = 'uncertified_coefficients';
+    out.cert_failure = 'the certificate does not survive the conversion to the returned coefficients';
   end
 end
 if ~isempty(out.z), out.obj = bobj' * out.z; end

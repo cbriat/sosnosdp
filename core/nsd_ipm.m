@@ -17,7 +17,7 @@ EV = nsd_eval_all(cones, offs, x);
 s = -EV.g; y = zeros(my, 1); tau = 1; kappa = 1;
 muf = @(x, s, tau, kappa) (x'*s + tau*kappa) / (nu + 1);
 rp0 = norm(A*x - b*tau) + 1; rd0 = norm(-A'*y + c*tau - s) + 1;
-status = 'max_iter'; info = struct(); hist = zeros(0, 6); last_cert = []; last_fail = []; accuracy = '';
+status = 'max_iter'; info = struct(); hist = zeros(0, 6); last_cert = []; last_fail = []; cert_hist = {}; accuracy = '';
 for it = 1:o.max_iter
   mu = muf(x, s, tau, kappa);
   rp = A*x - b*tau; rd = -A'*y + c*tau - s; rg = b'*y - c'*x - kappa;
@@ -31,6 +31,8 @@ for it = 1:o.max_iter
     if okc
       if o.stop_on_certificate, status = 'certified'; info = infoc; break; end
       last_cert = infoc; last_cert.iter = it;
+      cert_hist{end+1} = last_cert;
+      if numel(cert_hist) > 10, cert_hist(1) = []; end
     else
       last_fail = infoc; last_fail.iter = it;
     end
@@ -87,7 +89,7 @@ for it = 1:o.max_iter
 end
 res = struct('status', status, 'x', x, 'y', y, 's', s, 'tau', tau, 'kappa', kappa, ...
              'mu', muf(x, s, tau, kappa), 'iters', size(hist, 1), 'hist', hist, 'info', info, ...
-             'time', toc(t0), 'EV', EV, 'offs', offs, 'last_cert', last_cert, 'last_fail', last_fail, 'accuracy', accuracy);
+             'time', toc(t0), 'EV', EV, 'offs', offs, 'last_cert', last_cert, 'cert_hist', {cert_hist}, 'last_fail', last_fail, 'accuracy', accuracy);
 end
 
 function p = prox(EV, offs, s, tau, kappa, mu)

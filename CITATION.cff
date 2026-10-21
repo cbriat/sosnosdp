@@ -5,8 +5,8 @@ version: 0.1.0
 date-released: 2026-10-21
 license: MIT
 authors:
-  - name: "<AUTHOR NAME>"
-repository-code: "https://github.com/<OWNER>/sosnosdp"
+  - name: "Corentin Briat"
+repository-code: "https://github.com/cbriat/sosnosdp"
 references:
   - type: article
     title: "Sum-of-squares optimization without semidefinite programming"
@@ -31,6 +31,9 @@ references:
       - family-names: Vielma
         given-names: Juan Pablo
     journal: "Mathematical Programming"
+    start: 1417
+    end: 1429
+    year: 2023
     doi: "10.1007/s10107-022-01831-6"
   - type: article
     title: "Solving natural conic formulations with Hypatia.jl"
@@ -47,3 +50,51 @@ references:
     start: 2686
     end: 2699
     year: 2022
+  - type: article
+    title: "A homogeneous interior-point algorithm for nonsymmetric convex conic optimization"
+    authors:
+      - family-names: Skajaa
+        given-names: Anders
+      - family-names: Ye
+        given-names: Yinyu
+    journal: "Mathematical Programming"
+    volume: 150
+    issue: 2
+    start: 391
+    end: 422
+    year: 2015
+  - type: article
+    title: "alfonso: Matlab package for nonsymmetric conic optimization"
+    authors:
+      - family-names: Papp
+        given-names: Dávid
+      - family-names: Yıldız
+        given-names: Sercan
+    journal: "INFORMS Journal on Computing"
+    volume: 34
+    issue: 1
+    start: 11
+    end: 19
+    year: 2022
+  - type: software
+    title: "SOSTOOLS: Sum of squares optimization toolbox for MATLAB"
+    version: "4.00"
+    year: 2021
+    url: "https://github.com/oxfordcontrol/SOSTOOLS"
+    authors:
+      - family-names: Papachristodoulou
+        given-names: Antonis
+      - family-names: Anderson
+        given-names: James
+      - family-names: Valmorbida
+        given-names: Giorgio
+      - family-names: Prajna
+        given-names: Stephen
+      - family-names: Seiler
+        given-names: Peter
+      - family-names: Parrilo
+        given-names: Pablo A.
+      - family-names: Peet
+        given-names: Matthew M.
+      - family-names: Jagt
+        given-names: Declan

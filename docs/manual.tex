@@ -28,8 +28,9 @@
 \emergencystretch=2em
 
 \title{\textbf{SOSNOSDP}\\[4pt]\large Matrix sum-of-squares programs in SOSTOOLS,\\ solved without semidefinite programming\\[8pt]\normalsize User manual, version 0.1.0}
-\author{Corentin Briat\footnote{www.briat.info; corentin@briat.info}}
-\date{October 2026}
+\author{Corentin Briat\thanks{www.briat.info; corentin@briat.info}}
+\date{}
+% October 2026}
 
 \begin{document}
 \maketitle
@@ -56,13 +57,28 @@ SOSNOSDP brings this approach to SOSTOOLS users. Its contributions are practical
 \end{itemize}
 The theory of the cone, its barrier and the recovery of SOS decompositions is that of~\cite{PappYildiz2019,KCV2023}. Please cite those works together with this package (\cref{sec:cite}).
 
+\subsection{Scope: one variable or several}\label{sec:scope}
+Matrix SOS constraints are \emph{not} restricted to one variable. What depends on the number of variables is the kind of set on which positivity is imposed:
+\begin{center}\small
+\begin{tabular}{p{4.8cm}p{1.9cm}p{6.6cm}}
+\toprule
+Constraint & Variables & Treatment\\
+\midrule
+\code{sosineq}, \code{sosmatrixineq} (positivity on $\R^n$) & any number & interpolant matrix SOS cone, approximate Fekete nodes, no Gram variables\\
+\code{sosineq\_interval}, \code{sosmatrixineq\_interval} & one & weighted cone on $[a,b]$, no multipliers, no Gram variables\\
+\code{sosineq(prog,p,[a inf])} & one & weighted cone on a half-line\\
+positivity on a box or semialgebraic set in several variables & any number & SOSTOOLS multipliers: \code{sossosvar\_nosdp} (scalar, Gram-free) or \code{sossosvar}, \code{sossosmatrixvar} (their Gram blocks become PSD cones)\\
+\bottomrule
+\end{tabular}
+\end{center}
+An interval constraint may depend only on its interval variable and on decision variables; the bridge stops with an error otherwise. Multivariate weighted cones with several weights (for example boxes without multipliers) are supported by the core (\code{nsd\_cone} accepts any weighted bases) but have no SOSTOOLS front end yet. The tests include matrix SOS constraints in two and three variables and box constraints in two variables (\cref{sec:verif}). Global constraints in several variables have been tested far less than univariate ones, and their cost grows quickly with the number of nodes $U=\binom{n+2d}{n}$.
+
 %======================================================================
 \section{Installation}\label{sec:install}
 %======================================================================
 \paragraph{Requirements.} MATLAB R2016b or later, or GNU Octave 8, and SOSTOOLS~4 (tested with the version on GitHub, \url{https://github.com/oxfordcontrol/SOSTOOLS}, October 2026). Programs must be written in SOSTOOLS' default polynomial mode (\code{pvar}). No SDP solver is needed.
 
-\paragraph{MATLAB.}\ \\
-
+\paragraph{MATLAB.}
 \begin{lstlisting}
 addpath(genpath('/path/to/SOSTOOLS'));
 addpath('/path/to/sosnosdp');
@@ -130,9 +146,9 @@ which is the dual of $\min c^\top x$ s.t.\ $-L^\top x=b$, $x\in\cK^\ast$. The ho
 The method approaches $\cK$ from outside, through the dual iterates, and $\cK$ has no direct membership test. Every returned solution is therefore certified (\code{core/nsd\_certify\_point.m}, \code{core/nsd\_check\_values.m}).
 \begin{enumerate}[itemsep=2pt]
 \item \emph{Projection.} At an iterate with $\delta=\mu/\tau$, the decision variables are re-solved as $z^\star=\arg\min_z\|c+Lz+\delta\nabla F(x)\|_{\nabla^2F(x)^{-1}}$, so that $S=c+Lz^\star$ lies as close as possible to the central point $\hat s=-\delta\nabla F(x)$.
-\item \emph{Dikin test.} If $r=\|S-\hat s\|_{\nabla^2F(x)^{-1}}/\delta<1$, then $S$ lies in the Dikin ellipsoid of the conjugate barrier at $\hat s$, hence in the interior of $\cK$. Moreover $S-(1-r)\hat s\in\cK$ and $\hat s-\delta\lambda_{\max}(\Lambda(x))^{-1}E\in\cK$ for the fixed interior element $E=\cA(I)$, which gives a scale-free depth $(1-r)\,\delta\,\|E\|/(\lambda_{\max}\|S\|)$. Because the inverse Hessian is ill-conditioned near the boundary, the test is accepted only if this depth is at least \code{depth\_tol} (default $10^{-8}$).
-\item \emph{Gram test.} Otherwise the explicit Gram matrices $\Phi_j=\Lambda_j(x)^{-1}\Lambda_j(w)\Lambda_j(x)^{-1}$, $w=\nabla^2F(x)^{-1}S$, are formed. This is the recovery of~\cite[Thm.~5.1]{PappYildiz2019} in matrix form. They must be positive definite with $\lambda_{\min}>10^{-12}\lambda_{\max}$ and reproduce $S$ with relative residual below $10^{-10}$. This check does not depend on the accuracy of the Hessian. The Gram matrices are used only here, never in the solve.
-\item \emph{Returned coefficients.} The certificate is evaluated for the values $c+Lz$ of the coefficients actually returned to \code{sosgetsol}, not only for internal quantities.
+\item \emph{Gram test} (decides in the default mode). The Gram matrices $\Phi_j=\Lambda_j(x)^{-1}\Lambda_j(w)\Lambda_j(x)^{-1}$, $w=\nabla^2F(x)^{-1}S$, are formed. This is the recovery of~\cite[Thm.~5.1]{PappYildiz2019} in matrix form: $\sum_j\cA_j(\Phi_j)=S$, and if $\|S+\delta\nabla F(x)\|_{\nabla^2F(x)^{-1}}<\delta$ all $\Phi_j$ are positive definite. Because $\sum_j\cA_j(\Lambda_j^{-1}\Lambda_j(w)\Lambda_j^{-1})=\nabla^2F(x)w$, the same formula applied to the residual gives a correction, and the identity is refined iteratively to rounding level. The test accepts if every $\Phi_j$ satisfies $\lambda_{\min}>10^{-12}\lambda_{\max}$ and the relative residual of the identity is below $10^{-10}$ and below $10^{-2}\lambda_{\min}/\lambda_{\max}$, so that the residual cannot destroy positive definiteness. The Gram matrices are used only here, never in the solve.
+\item \emph{Dikin test} (reported, decides only in mode \code{'dikin'}). If $r=\|S-\hat s\|_{\nabla^2F(x)^{-1}}/\delta<1$, then $S$ lies in the Dikin ellipsoid of the conjugate barrier at $\hat s$, hence in the interior of $\cK$, with the scale-free depth $(1-r)\,\delta\,\|E\|/(\lambda_{\max}(\Lambda(x))\|S\|)$ for the interior element $E=\cA(I)$. This test needs no Gram matrix, but it relies on the inverse Hessian, which is ill-conditioned near the boundary. In floating point it accepted a matrix polynomial that is not positive semidefinite far from the nodes (test T15), with a computed depth of $10^{-8}$, so it is not used to decide by default.
+\item \emph{Returned coefficients.} The certificate is evaluated for the values $c+Lz$ of the coefficients actually returned to \code{sosgetsol}. The last ten certified iterates are kept, and the newest one that passes this final check is returned.
 \end{enumerate}
 For infeasible programs the method returns $x\in\cK^\ast$ with $c^\top x<0$. Then no $z$ with $\|z\|<|c^\top x|/\|L^\top x\|$ is feasible (\code{info.farkas\_radius}). This is a global proof of infeasibility only when the radius is large compared with the expected size of solutions.
 
@@ -140,15 +156,33 @@ For infeasible programs the method returns $x\in\cK^\ast$ with $c^\top x<0$. The
 SOSTOOLS stores every constraint as polynomial coefficients that are affine in the decision vector $u$, namely $b-A^\top u$ over a list of monomials (fields \code{prog.expr.At}, \code{b}, \code{Z}). The Gram matrices are created only inside \code{sossolve}. \code{sossolve\_nosdp} reads the program at that point (\code{bridge/sossolve\_nosdp.m}):
 \begin{enumerate}[itemsep=2pt]
 \item \emph{Decision variables.} Free variables (\code{sosdecvar}, \code{sospolyvar}, \code{sospolymatrixvar}) are kept. Gram blocks that SOSTOOLS creates for \code{sossosvar}, \code{sossosmatrixvar} and \code{sosposmatr} are parametrized by their symmetric part and constrained to the PSD cone of the same method. \code{sossosvar\_nosdp} avoids these Gram blocks altogether.
-\item \emph{Global SOS constraints} (\code{sosineq}, \code{sosmatrixineq}). The monomials of the Gram basis are taken from the Newton box of the polynomial. Nodes unisolvent for their products are approximate Fekete points, selected by column-pivoted QR from Chebyshev points (one variable) or Halton points (several variables)~\cite{SommarivaVianello2009,PappYildiz2019}. Monomials that cannot occur in an SOS polynomial become equality constraints. The default form of \code{sosmatrixineq}, $y^\top M(x)y$ with auxiliary variables $y$, is converted back to the matrix $M(x)$, so that the matrix cone of~\cite{KCV2023} is used rather than a scalar cone in $(x,y)$.
-\item \emph{Interval constraints.} For \code{sosineq\_interval} and \code{sosmatrixineq\_interval} on $[a,b]$ the cone has weights $1$ and $(t-a)(b-t)$, Chebyshev--Lobatto nodes and orthonormalized Chebyshev bases. Half-line constraints of SOSTOOLS (\code{sosineq(prog,p,[a inf])}) use weights $1$ and $t-a$. No multiplier is introduced.
+\item \emph{Global SOS constraints} (\code{sosineq}, \code{sosmatrixineq}), in any number of variables. The monomials of the Gram basis are taken from the Newton box of the polynomial. Nodes unisolvent for their products are approximate Fekete points, selected by column-pivoted QR from Chebyshev points (one variable) or Halton points (several variables)~\cite{SommarivaVianello2009,PappYildiz2019}. Monomials that cannot occur in an SOS polynomial become equality constraints. The default form of \code{sosmatrixineq}, $y^\top M(x)y$ with auxiliary variables $y$, is converted back to the matrix $M(x)$, so that the matrix cone of~\cite{KCV2023} is used rather than a scalar cone in $(x,y)$.
+\item \emph{Interval constraints} (one variable). For \code{sosineq\_interval} and \code{sosmatrixineq\_interval} on $[a,b]$ the cone has weights $1$ and $(t-a)(b-t)$, Chebyshev--Lobatto nodes and orthonormalized Chebyshev bases. Half-line constraints of SOSTOOLS (\code{sosineq(prog,p,[a inf])}) use weights $1$ and $t-a$. No multiplier is introduced.
 \item \emph{Equalities} (\code{soseq}) are eliminated through a null-space basis.
 \item \emph{Reparametrization.} The constraint matrix is factored as $L\Pi=QR$ with column pivoting, and the solver works with the orthonormal coordinates $Q$. The problem depends only on the range of $L$, so this is exact. It makes the method independent of the user's basis and scaling, and removes redundant variables. Numerically dependent directions are reported (\code{info.near\_dependent}).
 \item \emph{Write-back.} The SOSTOOLS decision vector is reconstructed and stored in the field \code{prog.solinfo.RRx}, which is what \code{sosgetsol} reads.
 \end{enumerate}
 
-\subsection{Size compared with the SDP}
-For an $r\times r$ constraint of degree $2d$ in one variable with an interval weight, the interpolant cone has dimension $(2d+1)r(r+1)/2$ and barrier parameter $r(2d+1)$. The corresponding SDP has the same barrier parameter and as many equality constraints as the cone has entries, but in addition Gram unknowns of order $r^2d^2$. One iteration costs $O(r^6d^3)$ operations here, against $O(r^6d^6)$ for a general SDP interior-point method~\cite{PappYildiz2019,KCV2023}.
+\subsection{Size and cost compared with the SDP}\label{sec:cost}
+Consider one $r\times r$ constraint of degree $2d$ in one variable with weights $1$ and $(t-a)(b-t)$. The cone has $U=2d+1$ nodes and dimension $m=Ur(r+1)/2=\Theta(r^2d)$, and the Gram blocks of the SDP have sides $n_s=r(d+1)$ and $rd$. The SDP has $m$ equality constraints and $\Theta(r^2d^2)$ Gram unknowns, the interpolant formulation has no Gram unknowns. Both have the barrier parameter $r(2d+1)$, hence the same iteration bound $O(\sqrt{rd}\,\log\varepsilon^{-1})$~\cite{SkajaaYe2015,PappYildiz2019}. With dense linear algebra, one iteration costs:
+\begin{center}\small
+\begin{tabular}{lll}
+\toprule
+& operations per iteration & memory\\
+\midrule
+this method: barrier gradient and Hessian & $O(r^4d^3)$ & $O(r^4d^2)$\\
+this method: Newton system (order $m$) & $O(m^3)=O(r^6d^3)$ & $O(r^4d^2)$\\[2pt]
+SDP, Schur complement: forming it & $O(mn_s^3+m^2n_s^2)=O(r^6d^4)$ & $O(r^4d^2)$\\
+SDP, Schur complement: factoring it & $O(m^3)=O(r^6d^3)$ & \\[2pt]
+SDP, full KKT in all Gram variables & $O(r^6d^6)$ & $O(r^4d^4)$\\
+\bottomrule
+\end{tabular}
+\end{center}
+Schur-complement solvers include SeDuMi, SDPT3 and MOSEK. The dominant term of this method, the factorization of a dense matrix of order $m$, has the same order as the factorization of the Schur complement in an SDP solver. The difference per iteration is the formation of the Schur complement, larger by a factor of order $L^2/U\approx d/2$ when the constraint matrices are treated as dense. Solvers that exploit their sparsity or low rank can reduce this term, for instance with the rank-one constraint matrices of an interpolant formulation~\cite{LofbergParrilo2004}. The bound $O(L^6)$ per iteration for the SDP in~\cite[Sec.~1.2]{PappYildiz2019}, here $O(r^6d^6)$, counts the solution of a linear system in all $\Theta(L^2)$ Gram variables, which is the last row of the table. The time per iteration of MOSEK reported in~\cite[Table~1]{PappYildiz2019} grows roughly like $d^4$ (from 0.92~s at $d=100$ to 661~s at $d=500$).
+
+In $n$ variables, with $L=\binom{n+d}{n}$ and $U=\binom{n+2d}{n}$, the factorization costs $O(r^6U^3)$ in both formulations and the formation of the Schur complement $O(r^6U^2L^2)$. The ratio $L^2/U$ is about $L/2^n$ for fixed $n$, so it grows with the degree, and it is bounded when $d$ is fixed and $n$ grows, in which case both formulations cost $O(r^6L^6)$ per iteration.
+
+In short, against a well-implemented Schur-complement SDP solver the gain per iteration is at most of order $L^2/U$, and it can vanish. The practical advantages of the method are the absence of Gram variables, a memory footprint independent of the Gram blocks, the conditioning of the interpolant representation~\cite[Sec.~4]{PappYildiz2019}, and lower constants. Against solvers that factor the full KKT system the gain is of order $d^3$ in time and $d^2$ in memory in one variable.
 
 %======================================================================
 \section{Reference}\label{sec:ref}
@@ -170,8 +204,8 @@ For an $r\times r$ constraint of degree $2d$ in one variable with an interval we
 \toprule
 Option & Default & Meaning\\
 \midrule
-\code{certificate} & \code{'auto'} & \code{'auto'}: Dikin test, Gram check where inconclusive; \code{'dikin'}; \code{'gram'}\\
-\code{depth\_tol} & $10^{-8}$ & depth a Dikin certificate must prove\\
+\code{certificate} & \code{'auto'} & \code{'auto'} and \code{'gram'}: the Gram test decides; \code{'dikin'}: Gram-free\\
+\code{depth\_tol} & $10^{-8}$ & depth a Dikin certificate must prove (mode \code{'dikin'})\\
 \code{max\_iter}, \code{tol} & 200, $10^{-8}$ & iterations and tolerance of the interior-point method\\
 \code{box} & \code{[-1 1]} & box in which nodes of global SOS constraints are chosen\\
 \code{rank\_tol} & $10^{-14}$ & tolerance for removing dependent decision directions\\
@@ -183,9 +217,9 @@ Option & Default & Meaning\\
 \subsection{Statuses and output}
 \begin{description}[itemsep=2pt]
 \item[\code{feasible}] feasibility program, certified solution.
-\item[\code{optimal}] the method converged; the returned solution is the last certified iterate, strictly feasible and slightly below the optimum (for SOS programs the optimum lies on the boundary of the cone).
+\item[\code{optimal}] the method converged; the returned solution is the newest certified iterate that passes the final check, strictly feasible and slightly inside the optimum (for SOS programs the optimum lies on the boundary of the cone). In the tests the gap is between $10^{-9}$ and $10^{-6}$ relative.
 \item[\code{infeasible}] a Farkas vector was found; see \code{info.farkas\_radius}.
-\item[\code{uncertified\_*}] no certificate could be established; the last iterate is still returned so that it can be checked by other means.
+\item[\code{uncertified\_*}] no certificate could be established; the last iterate is still returned so that it can be checked by other means. \code{uncertified\_coefficients} means that no certified iterate survived the check on the returned coefficients.
 \end{description}
 Further fields of \code{info}: \code{iters}, \code{time}, \code{obj}, \code{cones} (one description per cone), \code{cert\_method} and \code{depth} (per cone), \code{dikin\_ratio}, \code{rank}, \code{near\_dependent}, \code{barrier\_parameter}, \code{accuracy} (\code{full} or \code{reduced}), \code{last\_failed\_certificate}.
 
@@ -195,6 +229,8 @@ Further fields of \code{info}: \code{iters}, \code{time}, \code{obj}, \code{cone
 \paragraph{Normalize interval variables.} SOSTOOLS stores all polynomials in monomial coefficients of the declared variable. On a wide interval high-degree monomials are numerically dependent: for a clock-dependent LMI on $[0,2]$ the numerical rank drops from 249 to 92 at degree 40 and the method stalls, whereas in a variable normalized to $[-1,1]$ it certifies degree 40 in 19 iterations. The change of basis cannot be repaired after the program is built, so declare the variable with \code{nsd\_timevar}, which still lets you write derivatives and endpoint values in physical time.
 
 \paragraph{Prefer interval constraints to multipliers.} \code{sosmatrixineq\_interval} needs neither multipliers nor Gram variables. On a clock-dependent LMI of degree 24 it took 0.8~s, whereas the same solver with a matrix SOS multiplier did not reach a certificate in 21~s.
+
+\paragraph{Constraints on the boundary of the SOS cone.} Certificates prove membership in the \emph{interior} of the cone. Some constraints lie on its boundary for every value of the decision variables, and then no certificate can be given. A typical cause is an entry of lower degree than the diagonal pattern requires. For example, in $\begin{bmatrix}1+x^2+y^2&a(x+y)\\a(x+y)&2\end{bmatrix}$ the constant $(2,2)$ entry forces the Gram blocks of $x$ and $y$ in that entry to vanish, so every Gram matrix is singular (test T15). The status is then \code{uncertified\_*}. Remedies are to give every diagonal entry the full degree, if the problem allows it, or to reduce the monomial basis of the constraint.
 
 \paragraph{Ill-conditioned problems.} When every solution is badly conditioned, no floating-point certificate can be trusted, whatever the solver. For a random 10-state plant with one input and sampling period 0.1, the discrete controllability Gramian has condition number about $10^{17}$ and every valid Lyapunov matrix about $10^{7}$. The status is then \code{uncertified\_stalled}, while the returned controller still stabilizes the sampled loop (spectral radius 0.98). For control problems, an independent check of the result (closed-loop spectral radius, second moments) is always recommended.
 
@@ -247,14 +283,14 @@ Theorem~15 of~\cite{Briat2016} gives conditions for the mean-square stabilizatio
 \[
 dx=(A_{sd}x+B_{sd}u)\,dt+E_{sd}x\,dW_1+\alpha B_{sd}u\,dW_2,\qquad u(t)=K_d\,[x(t_k);u(t_k)],
 \]
-under sampling intervals in $[T_{\min},T_{\max}]$: a $9\times9$ matrix inequality on $[0,T_{\max}]$ and a $6\times6$ one on $[T_{\min},T_{\max}]$, both imposed directly on their intervals (\code{examples/stochastic\_sd\_design.m}). For the paper's Example~16 all six ranges of its Table~6 are certified in under 0.5~s each. Each design is verified exactly through the second moment $E[xx^\top]$, whose evolution between and at samples is linear (\code{examples/second\_moment.m}). For an unstable variant, bisection gives the largest certified $T_{\max}$: 1.37 at degree 2 and 3.46 at degree 4.
+under sampling intervals in $[T_{\min},T_{\max}]$: a $9\times9$ matrix inequality on $[0,T_{\max}]$ and a $6\times6$ one on $[T_{\min},T_{\max}]$, both imposed directly on their intervals (\code{examples/stochastic\_sd\_design.m}). For the paper's Example~16 all six ranges of its Table~6 are certified in under 0.5~s each. Each design is verified exactly through the second moment $E[xx^\top]$, whose evolution between and at samples is linear (\code{examples/second\_moment.m}). For an unstable variant, bisection gives the largest certified $T_{\max}$: 1.37 at degree 2 and 3.47 at degree 4.
 
 %======================================================================
 \section{Verification}\label{sec:verif}
 %======================================================================
-\code{tests/run\_tests.m} contains 16 tests with known answers. They cover polynomial minima, the matrix example, half-line and interval minima, multipliers through \code{sossosvar} and \code{sossosvar\_nosdp}, equality constraints, clock-dependent LMIs that are infeasible at degree 6 and feasible at degrees 8, 24, 32 and 40, Gram-free certificates, \code{nsd\_timevar}, and a regression test ensuring that a point on the boundary of the cone is not accepted as a certificate. All pass under Octave 8.4 with SOSTOOLS~4. The workflow \code{.github/workflows/octave-tests.yml} runs them on every push.
+\code{tests/run\_tests.m} contains 21 tests with known answers. They cover polynomial minima, the matrix example, half-line and interval minima, multipliers through \code{sossosvar} and \code{sossosvar\_nosdp}, equality constraints, clock-dependent LMIs that are infeasible at degree 6 and feasible at degrees 8, 24, 32 and 40, Gram-free certificates, \code{nsd\_timevar}, matrix SOS in two variables and scalar SOS in three variables with exact answers, scalar and matrix inequalities on a box in two variables through multipliers, and two regression tests ensuring that points on the boundary of the cone are not accepted as certificates (T12, T15). All pass under Octave 8.4 with SOSTOOLS~4. The workflow \code{.github/workflows/octave-tests.yml} runs them on every push.
 
-With SeDuMi through SOSTOOLS' \code{sossolve} (\code{tests/compare\_sedumi.m}), the optimal values of four test problems agree to about $10^{-7}$. The values of SOSNOSDP lie slightly inside the feasible set, those of SeDuMi sometimes slightly outside. On the clock-dependent LMI of Example~3 at increasing degree (\code{tests/scaling\_sedumi.m}, time interval $[0,2]$):
+With SeDuMi through SOSTOOLS' \code{sossolve} (\code{tests/compare\_sedumi.m}), the optimal values of four test problems agree within $1.4\cdot10^{-6}$, and within $2\cdot10^{-7}$ for three of them. The values of SOSNOSDP lie slightly inside the feasible set, those of SeDuMi sometimes slightly outside. On the clock-dependent LMI of Example~3 at increasing degree (\code{tests/scaling\_sedumi.m}, time interval $[0,2]$):
 \begin{center}\small
 \begin{tabular}{rlll}
 \toprule
@@ -266,7 +302,23 @@ degree & SeDuMi, multiplier form & SOSNOSDP, multiplier form & SOSNOSDP, native 
 \bottomrule
 \end{tabular}
 \end{center}
-These are single runs on one core under Octave. The package has not yet been run in MATLAB by its authors.
+These are single runs on one core under Octave.
+
+In several variables (\code{tests/run\_tests.m}, T13--T17, and SeDuMi through \code{sossolve}; the exact value of the first problem is $1+1/\sqrt2$, and the values of SOSNOSDP are certified):
+\begin{center}\small
+\begin{tabular}{llll}
+\toprule
+problem & exact & SeDuMi & SOSNOSDP\\
+\midrule
+$2\times2$ matrix SOS, 2 variables, degree 2 & $1.7071068$ & 1.7071068 & 1.7071067\\
+$3\times3$ matrix SOS, 3 variables, degree 2 & & 1.7320508 & 1.7320508\\
+scalar SOS, 3 variables, degree 4 & 4 & 4.0000000 & 3.9999997\\
+$\min xy$ on $[-1,1]^2$, Gram-free multipliers & $-1$ & & $-1.00000002$\\
+$2\times2$ matrix on $[-1,1]^2$, multipliers & 2 & 2.0000000 & 1.9999999\\
+\bottomrule
+\end{tabular}
+\end{center}
+The package has not yet been run in MATLAB by its authors.
 
 %======================================================================
 \section{Relation to other software}\label{sec:related}
@@ -285,9 +337,10 @@ SOSNOSDP is not a port of Hypatia. Its solver is a compact MATLAB implementation
 \begin{itemize}[itemsep=2pt]
 \item Only SOSTOOLS programs written with \code{pvar} are supported, not the Symbolic Math Toolbox mode.
 \item The sparsity options of SOSTOOLS (\code{'sparse'}, \code{'sparsemultipartite'}) are handled as dense constraints.
-\item Global SOS constraints in several variables use approximate Fekete nodes and have been tested far less than univariate and interval constraints.
+\item Global SOS constraints in several variables use approximate Fekete nodes from Halton points and have been tested far less than univariate and interval constraints.
 \item Linear algebra is dense. The Hessian of a cone with $N$ nodes and matrix size $r$ has order $Nr(r+1)/2$.
-\item Interval constraints are univariate. Parameter boxes in several variables (robust or LPV problems) are a natural extension.
+\item Interval constraints are univariate. Boxes in several variables need SOSTOOLS multipliers; a Gram-free front end for multivariate weighted cones (robust or LPV problems) is a natural extension, since the core already supports them. There is no Gram-free matrix multiplier yet (\code{sossosmatrixvar} uses PSD Gram blocks).
+\item Constraints lying on the boundary of the SOS cone for every value of the decision variables cannot be certified (\cref{sec:practice}).
 \item The interior-point method uses practical parameters and has not been tuned. Certificates are evaluated in floating point, not in exact arithmetic.
 \end{itemize}
 
@@ -302,7 +355,7 @@ If you use SOSNOSDP, please cite the package (\code{CITATION.cff}) together with
 \bibitem{Briat2021} C.~Briat, \emph{Stability analysis and stabilization of LPV systems with jumps and (piecewise) differentiable parameters using continuous and sampled-data controllers}, Nonlinear Analysis: Hybrid Systems, 41 (2021), 101040.
 \bibitem{CKV2022} C.~Coey, L.~Kapelevich, and J.~P.~Vielma, \emph{Solving natural conic formulations with Hypatia.jl}, INFORMS Journal on Computing, 34 (2022), pp.~2686--2699.
 \bibitem{CKV2023} C.~Coey, L.~Kapelevich, and J.~P.~Vielma, \emph{Performance enhancements for a generic conic interior point algorithm}, arXiv:2107.04262.
-\bibitem{KCV2023} L.~Kapelevich, C.~Coey, and J.~P.~Vielma, \emph{Sum of squares generalizations for conic sets}, Mathematical Programming, \href{https://doi.org/10.1007/s10107-022-01831-6}{doi:10.1007/s10107-022-01831-6}. Preprint arXiv:2103.11499.
+\bibitem{KCV2023} L.~Kapelevich, C.~Coey, and J.~P.~Vielma, \emph{Sum of squares generalizations for conic sets}, Mathematical Programming (2023), pp.~1417--1429, \href{https://doi.org/10.1007/s10107-022-01831-6}{doi:10.1007/s10107-022-01831-6}. Preprint arXiv:2103.11499.
 \bibitem{LofbergParrilo2004} J.~L\"ofberg and P.~A.~Parrilo, \emph{From coefficients to samples: a new approach to SOS optimization}, in 43rd IEEE Conference on Decision and Control, 2004, pp.~3154--3159.
 \bibitem{Nesterov2000} Y.~Nesterov, \emph{Squared functional systems and optimization problems}, in High Performance Optimization, Kluwer, 2000, pp.~405--440.
 \bibitem{PappAlizadeh2013} D.~Papp and F.~Alizadeh, \emph{Semidefinite characterization of sum-of-squares cones in algebras}, SIAM Journal on Optimization, 23 (2013), pp.~1398--1423.
