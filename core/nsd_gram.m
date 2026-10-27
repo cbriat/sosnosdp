@@ -40,14 +40,14 @@ Phi = cell(1, numel(K.Ps));
 for j = 1:numel(K.Ps)
   Pk = K.Pk{j};
   Ph = Li{j} * (Pk' * (BD * Pk)) * Li{j};
-  Phi{j} = (Ph + Ph') / 2;
+  Phi{j} = full((Ph + Ph') / 2);
 end
 end
 
 function Srec = apply_A(K, Phi, r, N)
 rec = zeros(r*r, N);
 for j = 1:numel(K.Ps)
-  T = K.Pk{j} * Phi{j} * K.Pk{j}'; T4 = reshape(T, r, N, r, N);
+  T = full(K.Pk{j} * Phi{j} * K.Pk{j}'); T4 = reshape(T, r, N, r, N);
   for i = 1:N, rec(:, i) = rec(:, i) + reshape(T4(:, i, :, i), r*r, 1); end
 end
 Srec = reshape(K.S' * rec, [], 1);

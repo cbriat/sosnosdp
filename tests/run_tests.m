@@ -227,6 +227,14 @@ ok = strcmp(info.status, 'optimal') && av <= 2 + 1e-9 && 2 - av < 1e-5;
 report('T17 matrix inequality on [-1,1]^2 via sossosmatrixvar', ok, sprintf('a = %.8f (exact 2), %d cones', av, numel(info.cones)));
 npass = npass + ok; nfail = nfail + ~ok;
 
+% ---- T18: regression test, a cone of dimension one (here the 1x1 Gram block of a degree-0
+% sossosvar, next to a 2x2 matrix SOS constraint) made NSD_GRAM index a sparse matrix as a 4-D
+% array (error MATLAB:ndFullOnly)
+[av, info] = mixed_block_sizes();
+ok = strcmp(info.status, 'optimal') && abs(av - (1 + sqrt(2))) < 1e-6;
+report('T18 mixed Gram block sizes (1x1 and 2x2)', ok, sprintf('a = %.8f (exact 1+sqrt(2)), %d cones', av, numel(info.cones)));
+npass = npass + ok; nfail = nfail + ~ok;
+
 fprintf('\n%d passed, %d failed\n', npass, nfail);
 if nfail > 0
   error('sosnosdp:tests', '%d test(s) failed', nfail);
